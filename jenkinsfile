@@ -1,0 +1,56 @@
+pipeline {
+    agent any
+    
+    environment {
+        IMAGE_NAME ="Siva2393/app"
+        DOCKERHUB_CREDENTIALS = credentials ('Docker')
+        SERVER_IP = "54.167.3.163"
+        SSH_CREDENTIALS = "ec2-ssh-credentials"
+
+    }
+
+    stages {
+        stage('Clone Repository') {
+           steps{
+            git branch: 'main' , url: 'https://github.com/PamuriSIva23/projects.git'
+            
+           } 
+        }
+
+        stage ('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${IMAGE_NAME}:latest")
+                }
+            }
+        }
+        stage('Push Image to Docker Hub') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', DOCKERHUB_CREDENTIALS) {
+                     docker.image("${IMAGE_NAME}:latest").push()
+                    }
+                }
+            }
+        }
+
+        stage('Deploy to EC2') {
+            steps {
+                sshagent(['ec2-ssh-credentials']) {
+                    ssh """
+                    ssh -o SrtictHostkeyChecking=no ubuntu@${SERVER_IP} <<EOF
+                    docker pull ${IMAGE_NAME}:latest
+                    docker stop myapp || true
+                    docker rm myapp || true
+                    docker run -d --name myapp -p 80:3000 ${IMAGE_NAME}:latest
+                    EOF
+                    """
+
+                }
+
+            }
+        }
+
+        }
+
+    }
